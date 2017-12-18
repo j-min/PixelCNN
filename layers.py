@@ -21,16 +21,16 @@ class MaskedConv2d(nn.Conv2d):
         #         -------------------------------------
         #  index    0       1     W//2    W//2+1
 
-        mask = torch.ones(ch_in, ch_out, height, width)
+        mask = torch.ones(ch_out, ch_in, height, width)
         if mask_type == 'A':
             # First Convolution Only
             # => Restricting connections to
             #    already predicted neighborhing channels in current pixel
-            mask[:, :, height//2, width//2:] = 0
-            mask[:, :, height//2+1:] = 0
+            mask[:, :, height // 2, width // 2:] = 0
+            mask[:, :, height // 2 + 1:] = 0
         else:
-            mask[:, :, height//2, width//2+1:] = 0
-            mask[:, :, height//2]
+            mask[:, :, height // 2, width // 2 + 1:] = 0
+            mask[:, :, height // 2] = 0
         self.register_buffer('mask', mask)
 
     def forward(self, x):
@@ -38,14 +38,30 @@ class MaskedConv2d(nn.Conv2d):
         return super(MaskedConv2d, self).forward(x)
 
 
-class MaskedConvBlock(nn.Module):
-    def __init__(self, mask_type='B', dim=128, k_size=3, stride=1, pad=1):
-        """1x1 Conv + 2D Masked Convolution + 1x1 Conv"""
+def maskAConv(c_in=3, c_out=256, k_size=7, stride=1, pad=3):
+    """2D Masked Convolution (type A)"""
+    return nn.Sequential(
+        MaskedConv2d('A', c_in, c_out, k_size, stride, pad),
+        nn.BatchNorm2d(c_out))
+
+
+class MaskBConvBlock(nn.Module):
+    def __init__(self, h=128, k_size=3, stride=1, pad=1):
+        """1x1 Conv + 2D Masked Convolution (type B) + 1x1 Conv"""
+        super(MaskBConvBlock, self).__init__()
+
         self.net = nn.Sequential(
-            nn.Conv2d(2*dim, dim, 1),
-            MaskedConv2d(mask_type, dim, dim, k_size, stride, pad),
-            nn.Conv2d(dim, 2*dim, 1)
+            nn.ReLU(),
+            nn.Conv2d(2 * h, h, 1),  # 1x1
+            nn.BatchNorm2d(h),
+            nn.ReLU(),
+            MaskedConv2d('B', h, h, k_size, stride, pad),
+            nn.BatchNorm2d(h),
+            nn.ReLU(),
+            nn.Conv2d(h, 2 * h, 1),  # 1x1
+            nn.BatchNorm2d(2 * h)
         )
 
     def forward(self, x):
-        return self.next(x)
+        """Residual connection"""
+        return self.net(x) + x

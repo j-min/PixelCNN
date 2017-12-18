@@ -3,15 +3,20 @@ from torch.utils.data import DataLoader
 
 transform = transforms.Compose([
     transforms.ToTensor()
-    ])
+])
 
-def get_loader(directory='./data', batch_size=128, train=True,
-    num_workers=1, pin_memory=True):
-    shuffle = not train
+
+def get_loader(directory='./datasets', batch_size=128, train=True, num_workers=1,
+               pin_memory=True):
     # 32 x 32
-    dataset = datasets.CIFAR10(
-        directory, batch_size=batch_size,
-        train=train, shuffle=shuffle, download=True,
-        transform=transform)
-    loader = DataLoader(dataset, num_workers=num_workers, pin_memory=False)
+    dataset = datasets.CIFAR10(directory,
+                               train=train,
+                               download=True,
+                               transform=transform)
+    shuffle = not train
+    loader = DataLoader(dataset,
+                        batch_size=batch_size,
+                        num_workers=num_workers,
+                        shuffle=shuffle,
+                        pin_memory=False)
     return loader

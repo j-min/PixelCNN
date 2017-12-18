@@ -1,39 +1,50 @@
 import torch.nn as nn
-from layers import *
+from layers import maskAConv, MaskBConvBlock
 
 
 class PixelCNN(nn.Module):
-    def __init__(self, c_in=3, dim=128, c_out=256, k_size=3, stride=1, pad=1):
+    def __init__(self, n_channel=3, h=128, discrete_channel=256):
         """PixelCNN Model"""
+        super(PixelCNN, self).__init__()
 
-        self.MaskAConv = MaskedConv2d('A', 1, dim, k_size=7, stride=1, pad=3)
-        self.MaskBConv = []
+        self.discrete_channel = discrete_channel
+
+        self.MaskAConv = maskAConv(n_channel, 2 * h, k_size=7, stride=1, pad=3)
+        MaskBConv = []
         for i in range(15):
-            self.MaskBConv.append(MaskedConvBlock('B', dim, k_size, stride, pad))
-        self.
+            MaskBConv.append(MaskBConvBlock(h, k_size=3, stride=1, pad=1))
+        self.MaskBConv = nn.Sequential(*MaskBConv)
 
-            # 1x1 conv to 256 channels
-            nn.Conv2d(dim, c_out, k_size=1, stride=1, pad=0)
-        )
+        # 1x1 conv to 3x256 channels
+        self.out = nn.Sequential(
+            nn.ReLU(),
+            nn.Conv2d(2 * h, 1024, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(1024),
+            nn.ReLU(),
+            nn.Conv2d(1024, n_channel * discrete_channel, kernel_size=1, stride=1, padding=0))
 
     def forward(self, x):
         """
         Args:
-            x: [batch_size, channel=1, height, width]
+            x: [batch_size, channel, height, width]
         Return:
-            out [batch_size, channel_out=256, height, width]
+            out [batch_size, channel, height, width, 256]
         """
+        batch_size, c_in, height, width = x.size()
 
+        # [batch_size, 2h, 32, 32]
         x = self.MaskAConv(x)
-        for conv_block in self.conv_layers:
 
+        # [batch_size, 2h, 32, 32]
+        x = self.MaskBConv(x)
 
-        return self.net(x)
+        # [batch_size, 3x256, 32, 32]
+        x = self.out(x)
 
-# class PixelRNN(nn.Module):
-#
-#     def __init__(self):
-#         super(PixelRNN, self).__init__(self)
-#
-#     def forward(self, x):
-#         pass
+        # [batch_size, 3, 256, 32, 32]
+        x = x.view(batch_size, c_in, self.discrete_channel, height, width)
+
+        # [batch_size, 3, 32, 32, 256]
+        x = x.permute(0, 1, 3, 4, 2)
+
+        return x
